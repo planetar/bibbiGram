@@ -20,16 +20,41 @@ While we're at it let's create 2 telegram groups for the bot to post updates:
 Add the new bot to both of these groups and it will listen on commands posted therein.
 Later, when everything is up and running, all the family can join the botname_alarm - group and get notifications...
 
-## Software:
-In order to join a Wlan which we may know nothing about the thing should go in Access Point modus at first start and offer a setup page for clients connecting to the initial AP. 
+## Libraries:
+In order to join a Wlan which we may know nothing about the thing should go in Access Point modus at first start and offer a setup page for clients connecting to the initial AP. There a several libraries which offer this, WiFiManager by tzapu a well known among them. The next building block is the telegram communications and I chose the Universal-Arduino-Telegram-Bot for this. This library has an example UsingWiFiManager which pretty much formed the basis of this sketch.
+The forementioned library depend on the ArduinoJson library in version 5.x which may conflict with dependencies of other libraries (it did for me). The solution is to provide the libraries in the same folder and include them in quotes. To make this work I edited UniversalTelegramBot.h, line 26 to read #include "ArduinoJson.h" (instead of #include <ArduinoJson.h>)
 
+Average.h supplies an easy way to build and get long- and shorttime averages of the measurements and CharStream.h (together with Streaming lirary) allows much nicer formatting of complex output lines to Serial.
 
-## libraries:
+Besides, U8g2lib cares for the display and Adafruit_BME280 does the sensor. 
+ESP8266WiFi, WiFiClientSecure, EEPROM, DNSServer,ESP8266WebServer are requirements of WiFiManager or UniversalTelegramBot.
 
+And then there are xbm_images.h and chatid.h which I introduced to separate private content (pictures, name of telegram groups) from published code. Those 2 libs currently compromise the concept of an agnostic bot that gets all the config at startup. This is work to be done.
+
+### 3rd party libraries and their repositories:
+Adafruit_BME280 https://github.com/adafruit/Adafruit_BME280_Library
+Adafruit_Sensor https://github.com/adafruit/Adafruit_Sensor
+Average.h       https://github.com/MajenkoLibraries/Average
+ArduinoJson.h 	https://github.com/bblanchon/ArduinoJson/tree/5.x
 CharStream.h    https://bitbucket.org/gundolf_/thermometergraph/src/master/
+Streaming       https://github.com/janelia-arduino/Streaming
+UniversalTelegramBot.h   https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
+UniversalTelegramBot.cpp https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
 WiFiManager.h   https://github.com/tzapu/WiFiManager
 WiFiManager.cpp https://github.com/tzapu/WiFiManager
-UniversalTelegramBot.h  https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
-UniversalTelegramBot.cpp    https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
-Average.h   https://github.com/MajenkoLibraries/Average
-ArduinoJson.h 	    https://github.com/bblanchon/ArduinoJson/tree/5.x
+
+### install/folder contents:
+While all the relevant info has been written above it may still be confusing. Basically, download the files from here as .zip or by git clone. Then make all the required libraries available, either by using the Arduino library Manager or by having them present in the project folder. You may have to edit some of the include statements to fit your situation.
+
+My project folder includes:
+ArduinoJson.h
+Average.h      
+bibbiGram.ino
+CharStream.h 
+chatid.h     
+README.md        
+UniversalTelegramBot.cpp 
+UniversalTelegramBot.h         
+WiFiManager.cpp    
+WiFiManager.h    
+xbm_images.h  
