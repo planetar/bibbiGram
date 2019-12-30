@@ -73,14 +73,14 @@ Those commands are /verbObject:
 sag (say) will invoke an output to the chat while zeig (show) directs an output to the display.
 - /sagWerte (say Values)  reports the current measurements in the telegram chat
 - /zeigLuise, /zeigAnton, /zeigAbend shows some tiny pics on the display (pics have been replaced with dummies, you may want to rename or even delete those...)
-- zeigMsg msg show message msg on the display. 12 or 13 chars will be visible, i.e. /zeigMsg hello world
+- /zeigMsg msg show message msg on the display. 12 or 13 chars will be visible, i.e. /zeigMsg hello world
 - /zeigCountDown n shows a minutely countdown from n down to 0, 3 - 2 - 1 - #
 - /clearCountDown allows to interrupt a running countDown
-- sagNetz reports SSID, RSSI, IP 
-- sagId reports the effective chatId of the current chat
-- sagMittel reports the short- and longterm median of measurements, the difference of those, the number of measurements and the list of triggerpoints
-- sagStatus summarizes the status of the thing: does it check for decline (or rise) of temperature (or humidity)
+- /sagNetz reports SSID, RSSI, IP 
+- /sagId reports the effective chatId of the current chat
+- /sagMittel reports the short- and longterm median of measurements, the difference of those, the number of measurements and the list of triggerpoints
+- /sagStatus summarizes the status of the thing: does it check for decline (or rise) of temperature (or humidity)
 uptime in minutes, number of allarms it raised, name of the group it posts debug or alarm messages to
 - /setzModus switch between modus 1: check for decline of temperature and modus 2  check for raise of humidity. Modus 1 is the use case of a forgotten window in winter, modus 2 the boiling kettle in the kitchen.
--setDebug toggle the debug flag (which doesn't change much for the current version... TBD)
+-/setDebug toggle the debug flag (which doesn't change much for the current version... TBD)
 
