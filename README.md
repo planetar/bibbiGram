@@ -46,15 +46,41 @@ And then there are xbm_images.h and chatid.h which I introduced to separate priv
 ### install/folder contents:
 While all the relevant info has been written above it may still be confusing. Basically, download the files from here as .zip or by git clone. Then make all the required libraries available, either by using the Arduino library Manager or by having them present in the project folder. You may have to edit some of the include statements to fit your situation.
 
-My project folder includes:
-ArduinoJson.h
-Average.h      
-bibbiGram.ino
-CharStream.h 
-chatid.h     
-README.md        
-UniversalTelegramBot.cpp 
-UniversalTelegramBot.h         
-WiFiManager.cpp    
-WiFiManager.h    
-xbm_images.h  
+_My_ project folder includes:
+- ArduinoJson.h
+- Average.h      
+- bibbiGram.ino
+- CharStream.h 
+- chatid.h     
+- README.md        
+- UniversalTelegramBot.cpp 
+- UniversalTelegramBot.h         
+- WiFiManager.cpp    
+- WiFiManager.h    
+- xbm_images.h  
+
+## Usage:
+Once the sketch loads and starts it checks if it has valid config data available (nope on first run) and then it switches to AP mode. Take your phone, scan wifi access points and join to the new bibbiGram AP. It will ask you to tap again to connect to the new network and once you do your browser will open with a start screen. 
+From a list of available networks select your own. Type in or paste the password.
+Below there is another input field for the telegram_bot token. 46 chars long, you may want to copy/paste it in.
+Click 'save' and the thing restarts and hopefully connects to the wifi network. 
+Have a look now at the botName_debug group, a first message should appear there. 
+With all of the above parts put in place we have a thingee that can report to telegram groups but it also listens for messages and can react to them.
+Write a message... /hallo
+If all went well the bot wil answer with a list of commands it is ready to act on.
+/sagMenu will make it reply with a second list of even more commands.
+Those commands are /verbObject:
+sag (say) will invoke an output to the chat while zeig (show) directs an output to the display.
+- /sagWerte (say Values)  reports the current measurements in the telegram chat
+- /zeigLuise, /zeigAnton, /zeigAbend shows some tiny pics on the display (pics have been replaced with dummies, you may want to rename or even delete those...)
+- zeigMsg msg show message msg on the display. 12 or 13 chars will be visible, i.e. /zeigMsg hello world
+- /zeigCountDown n shows a minutely countdown from n down to 0, 3 - 2 - 1 - #
+- /clearCountDown allows to interrupt a running countDown
+- sagNetz reports SSID, RSSI, IP 
+- sagId reports the effective chatId of the current chat
+- sagMittel reports the short- and longterm median of measurements, the difference of those, the number of measurements and the list of triggerpoints
+- sagStatus summarizes the status of the thing: does it check for decline (or rise) of temperature (or humidity)
+uptime in minutes, number of allarms it raised, name of the group it posts debug or alarm messages to
+- /setzModus switch between modus 1: check for decline of temperature and modus 2  check for raise of humidity. Modus 1 is the use case of a forgotten window in winter, modus 2 the boiling kettle in the kitchen.
+-setDebug toggle the debug flag (which doesn't change much for the current version... TBD)
+
