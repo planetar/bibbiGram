@@ -1,7 +1,12 @@
 # bibbiGram
 
+Sketch to drive an ESP8266 with BME280 sensor and .96" I2C display and connect it to Telegram for control and report. 
+
 The basic idea is to connect an ESP8266 mcu with a sensor and enable it to not only measure the current temperature and humidity but to compare these to past measurements so that it can discover sudden drastic changes. Think of a bathroom with a forgotten open window in winter. Or a kettle with water boiling along in the kitchen.
-In a smartHome setup it would suffice that the sensor box reports the measurements to some backend event bus and a smartHome controller (i.e. an openHab installation) has the rules to react on this event and notify the inhabitants. BibbiGram however aims to do this standalone by sending Telegram messages.
+
+In a smartHome setup it would suffice that the sensor box reports the measurements to some backend event bus and a smartHome controller (i.e. an openHab installation) has the rules to react on this event and notify the inhabitants or do the necessary.
+
+BibbiGram however aims to do this standalone by sending Telegram messages.
 It needs 5V from a wall plug, access to a Wlan and a Telegram-Bot token.
 
 ## Hardware:
@@ -10,18 +15,23 @@ It needs 5V from a wall plug, access to a Wlan and a Telegram-Bot token.
 - 0,96" OLED display with a 4Pin I2C interface.
 
 ## Case:
-https://www.thingiverse.com/thing:4068963 has been designed for it. Or simply create your own.
+https://www.thingiverse.com/thing:4068963 has been designed for it. The version v2 is recommended. 
 
 ## Telegram-Bot:
 To enable telegram communication you have to set up a bot. You don’t need to write any code for this. In fact, you don’t even need your computer! Go to the telegram app on your phone and search for the “botfather” telegram bot (he’s the one that’ll assist you with creating and managing your bot). Send "/help" to the bot for a menu of available commands. "/newbot" get's you going, you have to set a name and a username for it and if you succeed you get a token in a reply. Copy and save that.
+
 While we're at it let's create 2 telegram groups for the bot to post updates: 
 - botName_alarm is the destination to post to when an alarm occurs,
 - botName_debug receives all sorts of debug messages
+
 Add the new bot to both of these groups and it will listen on commands posted therein.
 Later, when everything is up and running, all the family can join the botname_alarm - group and get notifications...
 
 ## Libraries:
-In order to join a Wlan which we may know nothing about the thing should go in Access Point modus at first start and offer a setup page for clients connecting to the initial AP. There are several libraries which offer this, WiFiManager by tzapu a well known among them. The next building block is the telegram communications and I chose the Universal-Arduino-Telegram-Bot for this. This library has an example UsingWiFiManager which was my starting point for this sketch.
+In order to join a Wlan which we may know nothing about the thing should go in Access Point modus at first start and offer a setup page for clients connecting to the initial AP. There are several libraries which offer this, WiFiManager by tzapu a well known among them. 
+
+The next building block is the telegram communications and I chose the Universal-Arduino-Telegram-Bot for this. This library has an example UsingWiFiManager which was my starting point for this sketch.
+
 The forementioned library depend on the ArduinoJson library in version 5.x which may conflict with dependencies of other libraries (it did for me). The solution is to provide the libraries in the same folder and include them in quotes. To make this work I edited UniversalTelegramBot.h, line 26 to read #include "ArduinoJson.h" (instead of #include <ArduinoJson.h>)
 
 Average.h supplies an easy way to build and get long- and shorttime averages of the measurements and CharStream.h (together with Streaming lirary) allows much nicer formatting of complex output lines to Serial.
@@ -44,6 +54,8 @@ And then there is xbm_images.h which I introduced to separate private content (p
 - UniversalTelegramBot.cpp https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot
 - WiFiManager.h   https://github.com/tzapu/WiFiManager
 - WiFiManager.cpp https://github.com/tzapu/WiFiManager
+
+I want to thank all the authors for these libraries.
 
 ### install/folder contents:
 Basically, download the files from here as .zip or by git clone. Then make all the required libraries available, either by using the Arduino library Manager or by having them present in the project folder. You may have to edit some of the include statements to fit your situation.
@@ -69,22 +81,31 @@ Click 'save' and the thing restarts and hopefully connects to the wifi network.
 
 ### Initial Config
 Now we need to teach the device where to send alarm and status messages. 
+
 Open your Telegram client and enter the botName_alarm - Group you created before, make sure you already invited the bot to this group. 
-Type "/hallo" (w/o the quotes) and after some seconds the bot replies with links to 2 menus and an info introduction.
-Type "/sagMenu2" and you will see a list of commands to see or change config and status values.
-Type "/setzAlarmGroup" to teach the bot to direct alarm messages to this group.
-Type "/setzOffset 1.4" to initialise the temperature calibration, you can fine tune that later but an initialisation after the first start is needed.
-Type "/setzModus" to initialise the storage of the modus of operation. Now the bot checks for events of rising humidity. 
-Type "/setzModus" again to switch back and the bot will check for events of falling temperature. 
+
+- Type "/hallo" (w/o the quotes) and after some seconds the bot replies with links to 2 menus and an info introduction.
+- Type "/sagMenu2" and you will see a list of commands to see or change config and status values.
+- Type "/setzAlarmGroup" to teach the bot to direct alarm messages to this group.
+- Type "/setzOffset 1.4" to initialise the temperature calibration, you can fine tune that later but an initialisation after the first start is needed.
+- Type "/setzModus" to initialise the storage of the modus of operation. Now the bot checks for events of rising humidity. 
+- Type "/setzModus" again to switch back and the bot will check for events of falling temperature. 
+
 Change over to the botName_debug - Group you created before, again please check you already invited the bot to this group or do so now.
-Type "/setzDebugGroup" to teach the bot to direct debug messages to this group. (Not much for now, you can toggle measurement reports with "/setDebug")
+- Type "/setzDebugGroup" to teach the bot to direct debug messages to this group. (Not much for now, you can toggle measurement reports with "/setDebug")
 
 With all of the above parts put in place we have a thingee that can report to telegram groups but it also listens for messages and can react to them.
 
 ### Commands
-/sagMenu1 and sagMenu2 will make it reply with a list of commands.
+/hallo, /sagMenu1 and /sagMenu2 will reply with lists of commands.
+
 Those commands are /verbObject:
-sag (say) will invoke an output to the chat while zeig (show) directs an output to the display.
+- a slash starts the command
+- sag (say) will invoke an output to the chat while 
+- zeig (show) directs an output to the display.
+- setz (set) changes a setting
+
+Available commands include:
 - /sagWerte (say Values)  reports the current measurements in the telegram chat
 - /sagMittel reports the short- and longterm median of measurements, the difference of those, the number of measurements and the list of triggerpoints
 - /sagStatus summarizes the status of the thing: does it check for decline (or rise) of temperature (or humidity)
