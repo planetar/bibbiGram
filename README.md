@@ -18,7 +18,7 @@ It needs 5V from a wall plug, access to a Wlan and a Telegram-Bot token.
 https://www.thingiverse.com/thing:4068963 has been designed for it. The version v2 is recommended. 
 
 ## Telegram-Bot:
-To enable telegram communication you have to set up a bot. You don’t need to write any code for this. In fact, you don’t even need your computer! Go to the telegram app on your phone and search for the “botfather” telegram bot (he’s the one that’ll assist you with creating and managing your bot). Send "/help" to the bot for a menu of available commands. "/newbot" get's you going, you have to set a name and a username for it and if you succeed you get a token in a reply. Copy and save that.
+To enable telegram communication you have to set up a bot. Go to the telegram app on your phone and search for the “botfather” telegram bot (he’s the one that’ll assist you with creating and managing your bot). Send "/help" to the bot for a menu of available commands. "/newbot" get's you going, you have to set a name and a username for it and if you succeed you get a token in a reply. Copy and save that.
 
 While we're at it let's create 2 telegram groups for the bot to post updates: 
 - botName_alarm is the destination to post to when an alarm occurs,
