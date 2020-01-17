@@ -21,7 +21,7 @@ Add the new bot to both of these groups and it will listen on commands posted th
 Later, when everything is up and running, all the family can join the botname_alarm - group and get notifications...
 
 ## Libraries:
-In order to join a Wlan which we may know nothing about the thing should go in Access Point modus at first start and offer a setup page for clients connecting to the initial AP. There a several libraries which offer this, WiFiManager by tzapu a well known among them. The next building block is the telegram communications and I chose the Universal-Arduino-Telegram-Bot for this. This library has an example UsingWiFiManager which pretty much formed the basis of this sketch.
+In order to join a Wlan which we may know nothing about the thing should go in Access Point modus at first start and offer a setup page for clients connecting to the initial AP. There are several libraries which offer this, WiFiManager by tzapu a well known among them. The next building block is the telegram communications and I chose the Universal-Arduino-Telegram-Bot for this. This library has an example UsingWiFiManager which was my starting point for this sketch.
 The forementioned library depend on the ArduinoJson library in version 5.x which may conflict with dependencies of other libraries (it did for me). The solution is to provide the libraries in the same folder and include them in quotes. To make this work I edited UniversalTelegramBot.h, line 26 to read #include "ArduinoJson.h" (instead of #include <ArduinoJson.h>)
 
 Average.h supplies an easy way to build and get long- and shorttime averages of the measurements and CharStream.h (together with Streaming lirary) allows much nicer formatting of complex output lines to Serial.
@@ -29,7 +29,9 @@ Average.h supplies an easy way to build and get long- and shorttime averages of 
 Besides, U8g2lib cares for the display and Adafruit_BME280 does the sensor. 
 ESP8266WiFi, WiFiClientSecure, EEPROM, DNSServer,ESP8266WebServer are requirements of WiFiManager or UniversalTelegramBot.
 
-And then there are xbm_images.h and chatid.h which I introduced to separate private content (pictures, name of telegram groups) from published code. Those 2 libs currently compromise the concept of an agnostic bot that gets all the config at startup. This is work to be done.
+mTypes.h defines a data structure for saving the Telegram token and other settings in the emulated Eeprom.
+
+And then there is xbm_images.h which I introduced to separate private content (pictures) from published code. This lib is in its published version just a placeholder where you could include own pics if you want that.
 
 ### 3rd party libraries and their repositories:
 - Adafruit_BME280 https://github.com/adafruit/Adafruit_BME280_Library
@@ -44,14 +46,14 @@ And then there are xbm_images.h and chatid.h which I introduced to separate priv
 - WiFiManager.cpp https://github.com/tzapu/WiFiManager
 
 ### install/folder contents:
-While all the relevant info has been written above it may still be confusing. Basically, download the files from here as .zip or by git clone. Then make all the required libraries available, either by using the Arduino library Manager or by having them present in the project folder. You may have to edit some of the include statements to fit your situation.
+Basically, download the files from here as .zip or by git clone. Then make all the required libraries available, either by using the Arduino library Manager or by having them present in the project folder. You may have to edit some of the include statements to fit your situation.
 
 _My_ project folder includes:
 - ArduinoJson.h
 - Average.h      
 - bibbiGram.ino
 - CharStream.h 
-- chatid.h     
+- mTypes.h
 - README.md        
 - UniversalTelegramBot.cpp 
 - UniversalTelegramBot.h         
@@ -62,25 +64,45 @@ _My_ project folder includes:
 ## Usage:
 Once the sketch loads and starts it checks if it has valid config data available (nope on first run) and then it switches to AP mode. Take your phone, scan wifi access points and join to the new bibbiGram AP. It will ask you to tap again to connect to the new network and once you do your browser will open with a start screen. 
 From a list of available networks select your own. Type in or paste the password.
-Below there is another input field for the telegram_bot token. 46 chars long, you may want to copy/paste it in.
+Below there is another input field for the telegram_bot token. 45 chars long, you may want to copy/paste it in.
 Click 'save' and the thing restarts and hopefully connects to the wifi network. 
-Have a look now at the botName_debug group, a first message should appear there. 
+
+### Initial Config
+Now we need to teach the device where to send alarm and status messages. 
+Open your Telegram client and enter the botName_alarm - Group you created before, make sure you already invited the bot to this group. 
+Type "/hallo" (w/o the quotes) and after some seconds the bot replies with links to 2 menus and an info introduction.
+Type "/sagMenu2" and you will see a list of commands to see or change config and status values.
+Type "/setzAlarmGroup" to teach the bot to direct alarm messages to this group.
+Type "/setzOffset 1.4" to initialise the temperature calibration, you can fine tune that later but an initialisation after the first start is needed.
+Type "/setzModus" to initialise the storage of the modus of operation. Now the bot checks for events of rising humidity. 
+Type "/setzModus" again to switch back and the bot will check for events of falling temperature. 
+Change over to the botName_debug - Group you created before, again please check you already invited the bot to this group or do so now.
+Type "/setzDebugGroup" to teach the bot to direct debug messages to this group. (Not much for now, you can toggle measurement reports with "/setDebug")
+
 With all of the above parts put in place we have a thingee that can report to telegram groups but it also listens for messages and can react to them.
-Write a message... /hallo
-If all went well the bot wil answer with a list of commands it is ready to act on.
-/sagMenu will make it reply with a second list of even more commands.
+
+### Commands
+/sagMenu1 and sagMenu2 will make it reply with a list of commands.
 Those commands are /verbObject:
 sag (say) will invoke an output to the chat while zeig (show) directs an output to the display.
 - /sagWerte (say Values)  reports the current measurements in the telegram chat
-- /zeigLuise, /zeigAnton, /zeigAbend shows some tiny pics on the display (pics have been replaced with dummies, you may want to rename or even delete those...)
+- /sagMittel reports the short- and longterm median of measurements, the difference of those, the number of measurements and the list of triggerpoints
+- /sagStatus summarizes the status of the thing: does it check for decline (or rise) of temperature (or humidity)
+uptime in minutes, number of allarms it raised, name of the group it posts debug or alarm messages to
 - /zeigMsg msg show message msg on the display. 12 or 13 chars will be visible, i.e. /zeigMsg hello world
 - /zeigCountDown n shows a minutely countdown from n down to 0, 3 - 2 - 1 - #
 - /clearCountDown allows to interrupt a running countDown
 - /sagNetz reports SSID, RSSI, IP 
 - /sagId reports the effective chatId of the current chat
-- /sagMittel reports the short- and longterm median of measurements, the difference of those, the number of measurements and the list of triggerpoints
-- /sagStatus summarizes the status of the thing: does it check for decline (or rise) of temperature (or humidity)
-uptime in minutes, number of allarms it raised, name of the group it posts debug or alarm messages to
 - /setzModus switch between modus 1: check for decline of temperature and modus 2  check for raise of humidity. Modus 1 is the use case of a forgotten window in winter, modus 2 the boiling kettle in the kitchen.
--/setDebug toggle the debug flag (which doesn't change much for the current version... TBD)
+- /sagOffset reports the current temp. calibration. (no magic involved: tempMeasured-tempOffset=tempShown)
+- /setzOffset n.n (i.e.: /setOffset 1.4) allows to set the offset, decimal separator is a dot
+- /setDebug toggle the debug flag (which doesn't change much for the current version... TBD)
+- /zeigLuise, /zeigAnton, /zeigAbend shows some tiny pics on the display (pics have been replaced with dummies, you may want to rename or even delete those...)
 
+### Calibration
+The ESP8266 doesnt take much energy but it still creates exhaust heat. The box has been updated to allow better airflow and more exposure to outside air for the sensor, but still... 
+A rough estimate says the tmeperature measurements will be off by about 1.5°C but it is recommended to actually measure it with another thermometer and adapt the offset accordingly. Then again, Even if the temp is a little off changes of temperature and humidity will be detected, and the box acts on changes.
+
+### i8n
+TBD, currently, the interface is in German. 

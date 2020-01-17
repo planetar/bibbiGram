@@ -1,58 +1,47 @@
 
 /*
   *   bibberBot
-  
-     sammlung auf dem wege zu Luises Geburtstagsgeschenk
-  : ein kleines device, das brüllt, wenn das Fenster im Bad offen blieb :
+      Sketch to drive an ESP8266 with BME280 sensor and .96" I2C display and 
+      connect it to Telegram for control and report
 
-  * yo, geht erst mal. example by Brian Lough 
-  * 
-  * am ende von setup 
-  * 
-  * client.setInsecure();                                errrm!
-  * alternative: Arduino-core Version zurück auf 2.4.2 
-  * 
-  * die grossen libraries Wifimanager, UniversalTelegrambot und ArduinoJson (in version 5.x)
-  * liegen direkt im prg-Ordner, um die versionitis hinzubekommen
-  * 
-  * auf #102 kommt jetzt die Integration mit sensor, display
-  * 
-  * 
   * 
   */
 
 
+
+#include <U8g2lib.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
-
 //#include <i2cdetect.h>
-#include "Average.h"
+
 #include <Streaming.h>
-#include "CharStream.h"
-#include <U8g2lib.h>
-#include "xbm_images.h"
-#include "chatid.h"
-
-  
-#include <ESP8266WiFi.h>
-#include <WiFiClientSecure.h>
-#include "UniversalTelegramBot.h"
-
 #include <EEPROM.h>
 
 #include <DNSServer.h>            //Local DNS Server used for redirecting all rs to the configuration portal
 #include <ESP8266WebServer.h>     //Local WebServer used to serve the configuration portal
+#include <ESP8266WiFi.h>
+#include <WiFiClientSecure.h>
+
+#include "UniversalTelegramBot.h"
 #include "WiFiManager.h"          //https://github.com/tzapu/WiFiManager WiFi Configuration Magic
 
+#include "CharStream.h"
+#include "Average.h"
+
+#include "xbm_images.h"
+#include "mTypes.h"
 
 
 
-const char* version = "0.06.4";
+
+const char* version = "0.06.8";
 const char* APname  = "bibbiGram_bot";
 const char* SENSORNAME = APname;
 
 /**************************** PIN **************************************************/
 
+// resetPin (and ledPin) is an option found in the demo for UniversalTelegramBot that has been left included while not actually used
+// clkPin and sdaPin are just mentioned here for info
 const int clkPin = D3;
 const int sdaPin = D4;
 const int ledPin = D5;
@@ -60,9 +49,6 @@ const int resetConfigPin = D6; //When low will reset the wifi manager config
 
 
 /**************************** time & vars **************************************************/
-
-const char* on_cmd = "ON";
-const char* off_cmd = "OFF";
 
 
 // timed_loop
@@ -78,11 +64,6 @@ unsigned long time_3 = 0;
 unsigned long time_4 = 0;
 
 //
-//// debug messages
-//const int numMsg=20;
-//int msgCount=0;
-//String msg=".";
-//String arrMessages[numMsg];
 
 
 // display
@@ -113,52 +94,56 @@ float altitude = 56; //54,06 +2m schrank   // für r48
 
 uint8_t shortCnt=5;
 
-// für rising humidity ~ Wasserkessel
+// für rising humidity ~ boiling kettle
 //int triggerList[]={8,13,20};
-// für falling temp ~ Fenster offen:
+// für falling temp ~ open window:
 int triggerList[]={3,6,9};
 
 uint8_t alarmCount=0;
 uint8_t maxAlarm=3;
 uint8_t ignoreTemp=17;
 
-Average<float> aveLongList(240);
+Average<float> aveLongList(360);
 Average<float> aveShortList(shortCnt);
 
 float avgShort;
 float avgLong;
 
 
-// beide false ist: auf sinkende Temperaturen triggern
+// both false is: trigger on temperature doing down
 // rising, else falling
 boolean check_rising=false;
 // humidity, else temperature
 boolean check_humidity=false;
 
+// just a reminder of the format this is saved in Eeprom/flash
+//int  detectModus;                 // 0=falling , 1=rising 
+//int  detectType;                  // 0=Temp, 1= Humidity
+
+// currently only msg from checkMeasurements every 30 s 
 boolean sendDebug=false;
 
-// wird hochgezählt, Idee ist, anfangs bei kleinen werten hier wg unvollkommener Basis noch nichts zu tun
+// cntMeasures gets reported in /sagMittel and informs about the stability of long time average
+// cntMinutes is used for countDown feature
+// cntAlarms helps distinguish between 3 different levels of deviation
 long cntMeasures=0; 
 long cntMinutes=0;
 int  cntAlarms=0;
 
+// you can use this offset to calibrate the shown temperature in an effort to
+// counter the heat that is created by the mcu
+float tempOffset=1.2;
 
-float tempOffset=1.8;
 
-/*
-
-  wenn die kiste gerade anläuft, cntMeasures < 100 ist, ist der Einfluss der neuen Werte recht gross
-  wenn die checkMeasurement zu oft gerufen wird, besteht die Gefahr, dass die Temp-Veränderung kleiner der Fehler-Streubreite ist und nicht steti erkannt wird, obwohl es immer kälter wird
-  
- 
- */
 
 
 /*********************************** telegram bot ********************************/
 
 #define BOT_TOKEN_LENGTH 46
-
 char botToken[BOT_TOKEN_LENGTH] = "";
+
+#define cfgLength 80
+configData_t cfg;
 
 
 
@@ -175,8 +160,6 @@ UniversalTelegramBot *bot;
 
 U8G2_SH1106_128X64_NONAME_F_HW_I2C display(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
 
-//WiFiClient espClient;
-//PubSubClient mqClient(espClient);
 Adafruit_BME280 bme;
 
 
@@ -185,11 +168,11 @@ Adafruit_BME280 bme;
 
 void setup() {
   Serial.begin(115200);
+  Serial << F("Setup\n");
 
   setupBotMagic();
-  //setupOta();
 
-  // Initialize the I2C bus (BH1750 library doesn't do this automatically)
+  // Initialize the I2C bus 
   // On esp8266 you can select SCL and SDA pins using Wire.begin(D4, D3);
   Wire.begin(D4, D3);
 
@@ -215,10 +198,8 @@ void setup() {
 /********************************** START MAIN LOOP*****************************************/
 
 void loop() {
-  //ArduinoOTA.handle();
   checkResetPin();
   timed_loop();
-
 }
 
 
@@ -292,28 +273,39 @@ void checkBotNewMessages(){
 
 void setupBotMagic(){
   
-  Serial.println("");
+  Serial.println("setupBotMagic");
+  
+  EEPROM.begin(cfgLength);
+  Serial << F("read configData");
+  readConfigFromEeprom(0);
+  
+  Serial << F("cfg.botToken:     ") << (cfg.botToken)      << F("\n");
+  Serial << F("cfg.chatId_debug: ") << (cfg.chatId_debug)  << F("\n");
+  Serial << F("cfg.chatId_alarm: ") << (cfg.chatId_alarm)  << F("\n");
+  Serial << F("cfg.detectModus:  ") << (cfg.detectModus)   << F("\n");
+  Serial << F("cfg.detectType:   ") << (cfg.detectType)    << F("\n");
+  Serial << F("cfg.offsetTenth:  ") << (cfg.offsetTenth)   << F("\n");
 
-  // bot token
-  EEPROM.begin(BOT_TOKEN_LENGTH);
-  Serial.println("read bot token");
-  readBotTokenFromEeprom(0);
-  Serial.println(botToken);
 
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   //Adding an additional config on the WIFI manager webpage for the bot token
-  WiFiManagerParameter custom_bot_id("botid", "Bot Token", botToken, 50);
+  WiFiManagerParameter custom_bot_id("botid", "Bot Token", cfg.botToken, 50);
   wifiManager.addParameter(&custom_bot_id);
   //If it fails to connect it will create a TELEGRAM-BOT access point
   wifiManager.autoConnect(APname);
 
-  strcpy(botToken, custom_bot_id.getValue());
+  Serial << F("custom_bot_id: ") << custom_bot_id.getValue() << F("\n");
+
+  strcpy(cfg.botToken, custom_bot_id.getValue());
   if (shouldSaveConfig) {
-    writeBotTokenToEeprom(0);
+    //writeBotTokenToEeprom(0);
+    writeConfigToEeprom(0);
   }
 
-  bot = new UniversalTelegramBot(botToken, client);
+Serial << F("cfg.botToken: ") << cfg.botToken << F("\n");
+
+  bot = new UniversalTelegramBot(cfg.botToken, client);
   //bot->_debug=true;
   Serial.println("");
   Serial.println("WiFi connected");
@@ -333,20 +325,41 @@ void saveConfigCallback () {
   shouldSaveConfig = true;
 }
 
-void readBotTokenFromEeprom(int offset){
-  for(int i = offset; i<BOT_TOKEN_LENGTH; i++ ){
-    botToken[i] = EEPROM.read(i);
-  }
-  EEPROM.commit();
+//void readBotTokenFromEeprom(int offset){
+//  for(int i = offset; i<BOT_TOKEN_LENGTH; i++ ){
+//    botToken[i] = EEPROM.read(i);
+//  }
+//  EEPROM.commit();
+//}
+//
+//void writeBotTokenToEeprom(int offset){
+//  for(int i = offset; i<BOT_TOKEN_LENGTH; i++ ){
+//    EEPROM.write(i, botToken[i]);
+//  }
+//  EEPROM.commit();
+//}
+
+
+void readConfigFromEeprom(int offset){  
+  EEPROM.get( offset, cfg );
+  check_rising = (cfg.detectModus==1);
+  check_humidity = (cfg.detectType == 1);
+  float amount = ((float) cfg.offsetTenth) / 10;
+  if (amount > -6 && amount < 6){tempOffset = amount ;};
+  
 }
 
-void writeBotTokenToEeprom(int offset){
-  for(int i = offset; i<BOT_TOKEN_LENGTH; i++ ){
-    EEPROM.write(i, botToken[i]);
-  }
-  EEPROM.commit();
+void writeConfigToEeprom(int offset){
+  // update possibly changed values
+  cfg.detectModus = check_rising ? 1 : 0;
+  cfg.detectType = check_humidity ? 1 : 0;
+  cfg.offsetTenth = (int) tempOffset*10;
+  
+  EEPROM.put( offset, cfg );
+  delay(200);
+  EEPROM.commit();    // Needed for ESP8266 to get data written
+  
 }
-
 
 /********************************** bot chat  *****************************************/
 
@@ -357,55 +370,167 @@ void handleNewMessages(int numNewMessages) {
   for(int i=0; i<numNewMessages; i++) {
     String chat_id = String(bot->messages[i].chat_id);
     String text = bot->messages[i].text;
+    String from_name = bot->messages[i].from_name;
+    String chat_title =  bot->messages[i].chat_title;
     text.toLowerCase();
+    Serial << F("from_name: ") << from_name << F("\n");
+    Serial << F("chat_title: ") << chat_title << F("\n");
+    Serial << F("text: |") << text << F("|\n");
 
-    if (text.startsWith("/hallo")||text.startsWith("/sagauswahl")) {
-      String msg = "Worauf ich so höre:\n";
-      msg += "/sagWerte : nennt aktuelle Meßwerte\n";
-      msg += "/zeigLuise : zeigt Luise auf display \n";
-      msg += "/zeigAnton : zeigt Anton auf display \n";
-      msg += "/zeigAbend : zeigt Bild auf display \n";
-      msg += "/zeigMsg   : zeigt Kurztext auf display \n";
-      msg += "/zeigCountDown n : zeigt Countdown\n";
-      msg += "/clearCountDown   : stoppt Countdown\n";
-      
-      msg += "/sagMenu   : nennt weitere Optionen\n";
+    if (text.startsWith("/hallo")) {
+      Serial << F("if: ") << text << F("\n\n");
+      String msg = "Hallo "+ from_name +"!\n\n";
+      msg += "was hier geht: \n";
+      msg += "/sagMenu1   : HauptMenü\n";
+      msg += "/sagMenu2   : Status & Config\n";
+      msg += "/sagInfo    : erklär mal\n";
       bot->sendMessage(chat_id, msg, "Markdown");
     }
 
-    else if (text.startsWith("/sagmenu")) {
-      String msg = "Mehr Aufrufe für BibbiBot:\n";
-      msg += "/sagNetz : listet Verbindungsdaten\n";
-      msg += "/sagId : nennt die effektive chatId\n";
+    else if (text.startsWith("/sagauswahl")||text.startsWith("/sagmenu1")) {
+      String msg = "Worauf ich so höre:\n\n";
+      msg += "/sagWerte : nennt aktuelle Meßwerte\n";
       msg += "/sagMittel : nennt Mittelwerte\n";
       msg += "/sagStatus : Selbstauskunft\n";
+      msg += "/zeigMsg   : zeigt Kurztext auf display \n";
+      msg += "/zeigCountDown n : zeigt Countdown\n";
+      msg += "/clearCountDown   : stoppt Countdown\n";
+      msg += "/zeigLuise : zeigt Luise auf display \n";
+      msg += "/zeigAnton : zeigt Anton auf display \n";
+      msg += "/zeigAbend : zeigt Bild auf display \n";
+      msg += "/hallo     : sag Hallo\n";
+      msg += "/sagMenu2  : Status & Config\n";
+      bot->sendMessage(chat_id, msg, "Markdown");
+    }
+
+    else if (text.startsWith("/sagmenu2")) {
+      String msg = "Mehr Aufrufe für BibbiBot:\n\n";
+      msg += "/sagNetz : listet Verbindungsdaten\n";
+      msg += "/sagId : nennt die effektive chatId\n";
       msg += "/setzModus : check Kälte oder Dampf?\n";
+      msg += "/sagOffset : nennt Temperatur-Offset\n";
+      msg += "/setzOffset n.n : setze Offset \n";
+      
       msg += "/setzDebug : debug-Msg senden?\n";
-      msg += "/sagAuswahl: nennt weitere Optionen\n";
+      msg += "/setzDebugGroup : aktuelle Gruppe bekommt debug-Msg\n";
+      msg += "/setzAlarmGroup : aktuelle Gruppe bekommt Alarm-Msg\n";
+      msg += "/hallo     : sag Hallo\n";
+      msg += "/sagMenu1: Hauptmenü\n";
+      bot->sendMessage(chat_id, msg, "Markdown");
+    }
+        
+    else if (text.startsWith("/saginfo")) {
+      Serial << F("if: ") << text << F("\n\n");
+      String msg="BibbiBot ist ein Sensor mit Anzeige und Telegram-Verbindung über WLAN.\n";
+      msg += "Es braucht ein WLAN, wo es mit Kennwort angemeldet ist. Wenn das WLAN aus ist, wird die Kiste selbst zum Accesspoint. Du kannst dich mit dem Handi dort anmelden und das Netz, Passwort und Token eingeben.\n\n";
+      msg += "Telegram dient zur Interaktion mit der Kiste, damit alles funktioniert, braucht BibbiBot ein botToken und zwei Telegram-Gruppen. \n";
+      msg += "Eine Gruppe für Statusmeldungen (debug) und eine Gruppe für Alarme.\n";
+      
+      msg += "/hallo     : sag Hallo\n";
+      msg += "/sagMehrInfo: genau, mehr Info\n";
+      bot->sendMessage(chat_id, msg, "Markdown");
+    }
+        
+    else if (text.startsWith("/sagmehrinfo")) {
+      Serial << F("if: ") << text << F("\n\n");
+      String msg="";   
+      msg += "So ein Alarm kann sein: die Temperatur sinkt auf einmal stetig. (zB.: Fenster steht offen). Oder auch: Die Feuchtigkeit steigt stetig (Wasserkessel verkocht in der Küche).\n\n";
+      msg += "Der Sensor misst Temperatur und Luftfeuchte und vergleicht langfristige und kurzfristige Mittelwerte. Und er hat Schwellwerte, wenn aktueller und langfristiger Mittelwerte mehr als die abweichen, gibt es einen Alarm.\n";
+      msg += "Alarm heisst: eine Nachricht in die Gruppe für Alarme. Und wer in dieser Gruppe ist, bekommt den Alarm per Telegram auf's Handi.\n\n";
+      
+      msg += "/hallo     : sag Hallo\n";
+      msg += "/sagNochMehrInfo: genau, noch mehr Info\n";
+      bot->sendMessage(chat_id, msg, "Markdown");
+    }
+
+    else if (text.startsWith("/sagnochmehrinfo")) {
+      String msg="Wer misst, misst Mist\n";
+      msg += "Die gemessene Temperatur ist evtl. zu hoch, weil die Kiste selbst Abwärme erzeugt. Es gibt einen Offset zur Kalibrierung. Und für die Alarme ist die Änderung wichtig, und die ist genau.\n";
+      msg += "BibbiBot kann noch mehr: Kurznachrichten (ca 12 Zeichen). Countdown in Minuten. Kleine Bildchen.\n\n";
+      msg += "und und und.\n\n";
+      
+      
       bot->sendMessage(chat_id, msg, "Markdown");
     }
         
     else if (text.startsWith("/sagid")) {
       String msg="deine id ist: "+String(chat_id);
-      bot->sendMessage(chat_id, msg, "");
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
+    }       
+    
+    else if (text.startsWith("/sagoffset")) {
+      String msg="der Temperatur-Offset ist: "+String(tempOffset)+"\n";
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
     }
+
+  
+    else if (text.startsWith("/setzoffset")) {
+      String msg;
+      String tmp = text.substring(11);
+      tmp.trim();
+      float amount = (float) tmp.toFloat(); 
+      if (amount<-6||amount>6){msg="off limit!";}else{
+      Serial << F("neuer Offset: ") << amount << F("\n");
+      tempOffset=amount;
+      msg="der neue Temperatur-Offset ist: "+String(tempOffset)+"\n";
+
+      writeConfigToEeprom(0);
+      
+      }
+      bot->sendMessage(chat_id, msg, "Markdown");
+
+    }
+    
+    else if (text.startsWith("/setzdebuggroup")) {
+      Serial << F("if: ") << text << F("\n\n");
+      String msg="debugMsg gehen an die Gruppe "+chat_title+" mit der id: "+chat_id;
+      int bufLen=11;
+      char charBuf[bufLen];
+      chat_id.toCharArray(charBuf,bufLen);
+      for (int i = 0; i<bufLen; i++ ){
+        cfg.chatId_debug[i]=charBuf[i]; }   
+      writeConfigToEeprom(0);
+      bot->_debug=true;
+        bot->sendMessage(chat_id, msg, "Markdown");
+      bot->_debug=false;
+      
+    }
+    
+    else if (text.startsWith("/setzalarmgroup")) {
+      Serial << F("if: ") << text << F("\n\n");
+      String msg="alarmMsg gehen an die Gruppe "+chat_title+" mit der id: "+chat_id;
+      int bufLen=11;
+      char charBuf[bufLen];
+      chat_id.toCharArray(charBuf,bufLen);
+      for (int i = 0; i<bufLen; i++ ){
+        cfg.chatId_alarm[i]=charBuf[i]; }
+      writeConfigToEeprom(0);
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
+      Serial << F("out: |") << chat_id << F("| ") << text << F("\n\n");
+    }
+    
+
+    
     else if (text.startsWith("/sagwerte")) {
       String msg="die aktuellen Messwerte sind: \n";
       msg += "Temperatur:  "+String(temperature)+" °C\n";
       msg += "Luftfeuchte: "+String(humidity)+" %\n";
       msg += "r.Luftdruck: "+String(rPressure)+" hP\n";
-      bot->sendMessage(chat_id, msg, "");
+      bot->sendMessage(chat_id, msg, "Markdown");
     }    
     else if (text.startsWith("/sagmittel")) {
       String msg="kurz- und langfristige Mittelwerte sind: \n";
       msg += "kurzfr.:   "+String(avgShort)+" °C\n";
       msg += "langfr.:   "+String(avgLong) +" °C\n";
-      msg += "Differenz: "+String(avgLong-avgShort) +" °C\n"; // cntMeasures  "Differenz: "+
+      msg += "Differenz: "+String(avgLong-avgShort) +" °C\n"; 
       msg += String(cntMeasures) +" Messungen\n";
       msg += "Trigger 1: "+String(triggerList[0])+"\n";
       msg += "Trigger 2: "+String(triggerList[1])+"\n";
       msg += "Trigger 3: "+String(triggerList[2])+"\n";
-      bot->sendMessage(chat_id, msg, "");
+      bot->sendMessage(chat_id, msg, "Markdown");
     }    
     
     else if (text.startsWith("/sagnetz")) {
@@ -430,9 +555,11 @@ void handleNewMessages(int numNewMessages) {
       }  
       msg += "ich laufe seit:  "+String(cntMinutes)+" Minuten\n";
       msg += "ich habe "+String(cntAlarms) +" Alerts ausgelöst\n";
-      msg += "Gruppe für Alerts: "+ alarmGroupName+" \n";
-      msg += "Gruppe für debug: "+  debugGroupName+" \n";
-      //bot.sendMessage(update.message.chat_id, str(update.message.from_user.username)) 
+      //msg += "Gruppe für Alerts: "+cfg.chatId_alarm +" \n";
+      //msg += "Gruppe für debug:  "+cfg.chatId_debug+" \n";
+
+      msg += "firmware: "+  String(SENSORNAME)+" "+version+" \n";
+      
       bot->sendMessage(chat_id, msg, "");
     }    
 
@@ -441,17 +568,17 @@ void handleNewMessages(int numNewMessages) {
       int amount;     
       // wie lange?
       String tmp = text.substring(14);
-      //debug ("|"+tmp+"|",false);
-
+      
       tmp.trim();
-      amount = (int) tmp.toInt(); //tmp,toFloat();
-      //debug (String(amount),false);
+      amount = (int) tmp.toInt(); 
 
       if (amount > 0){
                // feedback geben
         msg="die Zeit läuft... \n";
+        msg+="beenden mit /clearCountdown \n";
       } else {
         msg="Countdown von was? Ich nehm' mal 3... \n";
+        msg+="beenden mit /clearCountdown \n";
         amount = 3;
       }
       
@@ -482,7 +609,7 @@ void handleNewMessages(int numNewMessages) {
       String msg="mein Status ist: \n";
       msg += "debug: "+  String(sendDebug)+" \n";    
       bot->sendMessage(chat_id, msg, "");
-      bot->sendMessage(chat_id_debug, msg, "");
+      bot->sendMessage(String(cfg.chatId_debug), msg, "");
     }
 
     else if (text == "/setzmodus") {  
@@ -547,36 +674,37 @@ void handleNewMessages(int numNewMessages) {
 }
 
 
-/********************************** sensor  *****************************************/
-/*
-String chat_id_debug_default = "-372509778";
-String chat_id_alarm_default = "-356847558";
+/********************************** messaging  *****************************************/
 
-String chat_id_debug = "";
-String chat_id_alarm = "";
- */
 void debug(String msg,boolean toSerial){
-
-  if (chat_id_debug == ""){ chat_id_debug = chat_id_debug_default;}
-
-  // chat away
-  bot->sendMessage(chat_id_debug, msg, "");
+  // toSerial sets whether to send msg to Serial
+  // but at the same time it signals a msg that should be send to debugGroup regardless of sendDebug True or False
+  // sendDebug ?
+  
+  if (toSerial||sendDebug){
+    // chat away
+    bot->sendMessage(String(cfg.chatId_debug), msg, "");
+  }
 
   if (toSerial){
     Serial << msg << "\n";
   }
 }
+
 void alarmLine(String msg){
 
   // chat away
-  bot->sendMessage(chat_id_alarm, msg, "");
+  String id=String(cfg.chatId_alarm);
+  bot->_debug=true;
+  bot->sendMessage(id, msg, "");
+  bot->_debug=false;
+  Serial << F("alarmLine: |") << id << F("|") << msg << "\n";
 
 }
 
-
 void doAlarm(){
   String msg;
-  if (chat_id_alarm == ""){ chat_id_alarm = chat_id_alarm_default;}
+  //if (chat_id_alarm == ""){ chat_id_alarm = chat_id_alarm_default;}
      
   msg = "Alarm #" + String(alarmCount)+"\n";
   msg += String(temperature) + " °C\n\n";
@@ -584,7 +712,7 @@ void doAlarm(){
   msg += "/sagMittel gibt Details";
   
  // chat away
-  bot->sendMessage(chat_id_alarm, msg, "");
+  bot->sendMessage(String(cfg.chatId_alarm), msg, "");
 
   
   
@@ -592,6 +720,8 @@ void doAlarm(){
 }
 
 
+
+/********************************** sensor  *****************************************/
 
 
 void measureBme(void)
@@ -606,12 +736,6 @@ void measureBme(void)
   temperature -= tempOffset;
 }
 
-
-/*
- check_humidity
- check_rising
- 
- * */
 
 void checkMeasurement(){
   // called immediately after taking a new measurement
@@ -628,7 +752,7 @@ void checkMeasurement(){
   aveLongList.push(newVal);
   avgLong = aveLongList.mean();
   
-  // zeitl. Beschraenkung? in r48 5 min
+  // if there were any limiting factors, this wd be the place to check them
 
   aveShortList.push(newVal);
   avgShort=aveShortList.mean();
@@ -690,6 +814,8 @@ void switchModus(){
       avgShort    = 0;
       cntMeasures = 0;
       alarmCount=0;  
+      
+      writeConfigToEeprom(0);
   
 }
 
@@ -711,10 +837,8 @@ float seaLevelForAltitude(float altitude, float atmospheric)
 
 
 
-////////////////////////////////////////////////////////////////////
+/********************************** sentup stuff  *****************************************/
 
-
-/////////////////////////////////////////////////////////////////
 
 
 void setupBme(){
@@ -735,7 +859,9 @@ void setupBme(){
 }
 
 
-///////////////
+
+/********************************** display stuff  *****************************************/
+
 void showPage(void){
 
   switch (currPage){
@@ -769,7 +895,7 @@ void showPage(void){
       }
 }
 
-// automatisch geht es auf kleiner Runde
+// loop display of pages
 void loopDisplayStep(void) {
   //if (flagAlert){ return; }
   
