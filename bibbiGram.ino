@@ -34,7 +34,7 @@
 
 
 
-const char* version = "0.06.8";
+const char* version = "0.07.0";
 const char* APname  = "bibbiGram_bot";
 const char* SENSORNAME = APname;
 
@@ -74,7 +74,6 @@ int maxLoopPageDefault = 2;
 int loopStep = 1;
 
 int skip1Loop = 0;
-int countDown = -1;
 
 CharStream<30> strBuffer;
 
@@ -124,11 +123,15 @@ boolean check_humidity=false;
 boolean sendDebug=false;
 
 // cntMeasures gets reported in /sagMittel and informs about the stability of long time average
-// cntMinutes is used for countDown feature
+// cntMinutes is uptime
+// cntDown used for countDown feature
 // cntAlarms helps distinguish between 3 different levels of deviation
 long cntMeasures=0; 
 long cntMinutes=0;
-int  cntAlarms=0;
+
+int cntAlarms=0;
+int cntDown = -1;
+int cntSilentMinutes=0;
 
 // you can use this offset to calibrate the shown temperature in an effort to
 // counter the heat that is created by the mcu
@@ -230,9 +233,13 @@ void timed_loop() {
     time_3 = millis();
       
     cntMinutes++;
-    if (countDown>-1){
-      countDown--;
+    if (cntDown>-1){
+      cntDown--;
       showCountDownPage();
+    }
+
+    if (cntSilentMinutes > 0){
+      cntSilentMinutes--;
     }
         
   }
@@ -344,7 +351,8 @@ void readConfigFromEeprom(int offset){
   EEPROM.get( offset, cfg );
   check_rising = (cfg.detectModus==1);
   check_humidity = (cfg.detectType == 1);
-  float amount = ((float) cfg.offsetTenth) / 10;
+  float amount = (float) cfg.offsetTenth;
+  amount = amount/10;
   if (amount > -6 && amount < 6){tempOffset = amount ;};
   
 }
@@ -353,7 +361,9 @@ void writeConfigToEeprom(int offset){
   // update possibly changed values
   cfg.detectModus = check_rising ? 1 : 0;
   cfg.detectType = check_humidity ? 1 : 0;
-  cfg.offsetTenth = (int) tempOffset*10;
+  float t = tempOffset * 10;
+  int t1 = (int) t;
+  cfg.offsetTenth = t1;
   
   EEPROM.put( offset, cfg );
   delay(200);
@@ -389,12 +399,13 @@ void handleNewMessages(int numNewMessages) {
 
     else if (text.startsWith("/sagauswahl")||text.startsWith("/sagmenu1")) {
       String msg = "Worauf ich so höre:\n\n";
-      msg += "/sagWerte : nennt aktuelle Meßwerte\n";
+      msg += "/sagWerte : nennt akt. Meßwerte\n";
       msg += "/sagMittel : nennt Mittelwerte\n";
       msg += "/sagStatus : Selbstauskunft\n";
-      msg += "/zeigMsg   : zeigt Kurztext auf display \n";
+      msg += "/zeigMsg   : zeigt Kurztext \n";
       msg += "/zeigCountDown n : zeigt Countdown\n";
       msg += "/clearCountDown   : stoppt Countdown\n";
+      msg += "/gibRuhe n : n Minuten kein Alarm\n";
       msg += "/zeigLuise : zeigt Luise auf display \n";
       msg += "/zeigAnton : zeigt Anton auf display \n";
       msg += "/zeigAbend : zeigt Bild auf display \n";
@@ -522,14 +533,41 @@ void handleNewMessages(int numNewMessages) {
       bot->sendMessage(chat_id, msg, "Markdown");
     }    
     else if (text.startsWith("/sagmittel")) {
+      
+      float diff = avgLong-avgShort;
+      //diff = abs(diff);
+      if (diff < 0) {diff = diff * -1;}
+      
+      String diffLine="Differenz: "+String(diff);
+      
+      if (check_humidity){
+        diffLine += " %\n\n";
+      } else {
+        diffLine += " °C\n\n";
+      }
+      
       String msg="kurz- und langfristige Mittelwerte sind: \n";
       msg += "kurzfr.:   "+String(avgShort)+" °C\n";
       msg += "langfr.:   "+String(avgLong) +" °C\n";
-      msg += "Differenz: "+String(avgLong-avgShort) +" °C\n"; 
+      msg += diffLine; 
+      
       msg += String(cntMeasures) +" Messungen\n";
       msg += "Trigger 1: "+String(triggerList[0])+"\n";
       msg += "Trigger 2: "+String(triggerList[1])+"\n";
-      msg += "Trigger 3: "+String(triggerList[2])+"\n";
+      msg += "Trigger 3: "+String(triggerList[2])+"\n\n";
+      
+      if (check_rising){
+        msg += "achte auf Anstieg der\n";
+      } else {
+        msg += "achte auf Abfallen der\n";
+      }   
+      if (check_humidity){
+        msg += "Luftfeuchte\n";
+      } else {
+        msg += "Temperatur\n";
+      }  
+
+            
       bot->sendMessage(chat_id, msg, "Markdown");
     }    
     
@@ -558,6 +596,15 @@ void handleNewMessages(int numNewMessages) {
       //msg += "Gruppe für Alerts: "+cfg.chatId_alarm +" \n";
       //msg += "Gruppe für debug:  "+cfg.chatId_debug+" \n";
 
+      if (cntSilentMinutes>0){
+        msg += "\nich schweige noch "+String(cntSilentMinutes) +" Minuten\n";
+      }
+
+     if (cntDown>0){
+        msg += "\nCountDown: "+String(cntDown) +" Minuten\n";
+      }
+
+      
       msg += "firmware: "+  String(SENSORNAME)+" "+version+" \n";
       
       bot->sendMessage(chat_id, msg, "");
@@ -585,24 +632,76 @@ void handleNewMessages(int numNewMessages) {
       bot->sendMessage(chat_id, msg, "");
  
       // countDown setzen
-      countDown=amount;
+      cntDown=amount;
       
       // stopUhr stellen
       time_3 = millis();
       
       // ersten Schritt zeigen
       showCountDownPage();
-        
- 
-            
+              
    }  
+   
    else if (text.startsWith("/clearcountdown")) {
-    countDown=-1;
+    cntDown=-1;
     String msg="na gut! \n";
     bot->sendMessage(chat_id, msg, "");   
    }
 
+//cntSilentMinutes
+   else if (text.startsWith("/gibruhe")) {
+      String msg;
+      int amount;     
+      // wie lange?
+      String tmp = text.substring(9);
+      
+      tmp.trim();
+      if (tmp==""){
+        // cmd w/o parameter, default = 60
+        msg="wielange kein Alarm? Ich nehm' mal 60 min... \n";
+        msg+="beenden mit /gibRuhe 0 \n";
+        amount = 60;               
+        
+        // SilentMinutes setzen
+        cntSilentMinutes=amount;  
+      }
+      
+      else {
+        // we got a parameter and read it as a number
+        amount = (int) tmp.toInt();
+        
+        if (amount == 0){
+          // they want to cancel
+           
+          // feedback geben
+          msg="ok, alles wieder normal! \n";
+          
+          // SilentMinutes setzen
+          cntSilentMinutes=amount; 
+                   
+        } else if (amount > 0){
+          // set silence for amount minutes
+          
+          // feedback geben
+          msg="na gut, ich schweige... \n";
+          msg+=String(amount)+" Minuten kein Alarm\n";
+          msg+="beenden mit /gibRuhe 0 \n";
 
+ 
+          // SilentMinutes setzen
+          cntSilentMinutes=amount;          
+        
+        } else {
+          // param is a surprise, do nothing special
+          msg="(hüstel)... \n";
+        }
+
+      }
+
+      bot->sendMessage(chat_id, msg, "");
+                    
+   }  
+   
 
     else if (text == "/setzdebug") {  
       sendDebug = !sendDebug;
@@ -630,6 +729,25 @@ void handleNewMessages(int numNewMessages) {
 
     bot->sendMessage(chat_id, msg, "");
     }
+
+    else if (text == "/sagcfg") {  
+
+ 
+      
+      String msg="cfg enthält: \n";
+
+        msg += "botToken: |"+String(cfg.botToken)+"|\n";
+        msg += "chatId_debug: |"+String(cfg.chatId_debug)+"|\n";
+        msg += "chatId_alarm: |"+String(cfg.chatId_alarm)+"|\n";
+        msg += "detectModus: |"+String(cfg.detectModus)+"|\n";
+        msg += "detectType: |"+String(cfg.detectType)+"|\n";
+        msg += "offsetTenth: |"+String(cfg.offsetTenth)+"|\n";
+  
+
+    bot->sendMessage(chat_id, msg, "");
+    }
+
+    
     
     else if (text == "/zeigluise") {
       String msg="gerne \n";
@@ -704,11 +822,17 @@ void alarmLine(String msg){
 
 void doAlarm(){
   String msg;
-  //if (chat_id_alarm == ""){ chat_id_alarm = chat_id_alarm_default;}
-     
+  
   msg = "Alarm #" + String(alarmCount)+"\n";
-  msg += String(temperature) + " °C\n\n";
-  msg += "Fenster vergessen?\n\n";
+  
+  if (check_humidity){
+    msg += String(humidity) + " %\n\n";
+    msg += "Wasserkessel vergessen?\n\n";   
+  } else {    
+    msg += String(temperature) + " °C\n\n";
+    msg += "Fenster vergessen?\n\n";
+  }
+  
   msg += "/sagMittel gibt Details";
   
  // chat away
@@ -752,19 +876,22 @@ void checkMeasurement(){
   aveLongList.push(newVal);
   avgLong = aveLongList.mean();
   
-  // if there were any limiting factors, this wd be the place to check them
-
   aveShortList.push(newVal);
   avgShort=aveShortList.mean();
 
   cntMeasures++;
-
+  
+  // if there were any limiting factors, this wd be the place to check them
+  if (cntSilentMinutes>0){return;}
+  
   // only care for low temps when searching for falling temp
   if (!check_humidity && (temperature > ignoreTemp)){return;}
     
-  
+  float diff = avgLong - avgShort;
+  //diff = abs(diff);
+  if (diff < 0){diff=diff*-1;}
     
-    String msg= "temp: "+String(temperature)+" humi: "+String(humidity)+" newVal: "+String(newVal)+" avgLong: "+String(avgLong)+" avgShort: "+String(avgShort)+" alarmCount: "+String(alarmCount)+" trigger: "+String(alarmTrigger)+" cnt: "+String(cntMeasures) ;
+    String msg= "temp: "+String(temperature)+" humi: "+String(humidity)+"\n newVal: "+String(newVal)+"\n avgLong: "+String(avgLong)+" avgShort: "+String(avgShort)+"\ndiff: "+String(diff)+" trigger: "+String(alarmTrigger)+" cnt: "+String(cntMeasures)+" alarmCount: "+String(alarmCount);
     debug(msg,false);
     
     for (int i = 0; i < shortCnt; i++) {
@@ -905,7 +1032,7 @@ void loopDisplayStep(void) {
       return;
   }
 
-  if (countDown>-1 ){
+  if (cntDown>-1 ){
     
       return;
   }
@@ -999,8 +1126,8 @@ void showCountDownPage(){
   display.clearBuffer();         // clear the internal memory
   display.setFont( u8g2_font_logisoso32_tf);  // choose a suitable font
 
-  if (countDown>0){
-    value = String(countDown);
+  if (cntDown>0){
+    value = String(cntDown);
   } else {
     value = "#💥!!#";
   }
