@@ -4,6 +4,9 @@
       Sketch to drive an ESP8266 with BME280 sensor and .96" I2C display and 
       connect it to Telegram for control and report
 
+  * 0.7.2 : security. We need a device passWd that is set in the initial config screen 
+  *         /setz*Group requires the passwd to match
+  *         all other commands only work from one of the configured groups
   * 
   */
 
@@ -12,7 +15,7 @@
 #include <U8g2lib.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
-//#include <i2cdetect.h>
+#include <i2cdetect.h>
 
 #include <Streaming.h>
 #include <EEPROM.h>
@@ -34,7 +37,7 @@
 
 
 
-const char* version = "0.07.0";
+const char* version = "0.07.2";
 const char* APname  = "bibbiGram_bot";
 const char* SENSORNAME = APname;
 
@@ -135,7 +138,7 @@ int cntSilentMinutes=0;
 
 // you can use this offset to calibrate the shown temperature in an effort to
 // counter the heat that is created by the mcu
-float tempOffset=1.2;
+float tempOffset=2.6;
 
 
 
@@ -145,7 +148,7 @@ float tempOffset=1.2;
 #define BOT_TOKEN_LENGTH 46
 char botToken[BOT_TOKEN_LENGTH] = "";
 
-#define cfgLength 80
+#define cfgLength 110
 configData_t cfg;
 
 
@@ -153,7 +156,7 @@ configData_t cfg;
 //flag for saving data
 bool shouldSaveConfig = false;
 
-
+bool botDebugState = false;
 
 /*********************************** instances  ********************************/
 
@@ -173,17 +176,25 @@ void setup() {
   Serial.begin(115200);
   Serial << F("Setup\n");
 
+ // Initialize the I2C bus 
+  // On esp8266 you can select SCL and SDA pins using Wire.begin(D4, D3);
+  Wire.begin(D4, D3); 
+
+  display.begin();
+  //display.enableUTF8Print();  
+  //showUtfPage("");
+  //delay(200);
+  showCnxPage();
+  // show waves to indicate setup/connexion
+
+  // read or at first start, allow config of SSID, passwd, token
   setupBotMagic();
 
-  // Initialize the I2C bus 
-  // On esp8266 you can select SCL and SDA pins using Wire.begin(D4, D3);
-  Wire.begin(D4, D3);
-
-  //i2cdetect();
+  showLogoPage();  
+  delay(100); 
   
   setupBme();
-  display.begin();
-  showLogoPage();
+
   debug( String(SENSORNAME)+" "+version,true);
 
   // pinMode led, resetPin
@@ -192,7 +203,7 @@ void setup() {
   delay(10);
   digitalWrite(ledPin, LOW); // initialize pin as off
   
-  alarmLine("Hallo sagt W27, dein bibbiBot!");
+  alarmLine("Hallo sagt dein bibbiBot!");
 }
 
 
@@ -283,7 +294,7 @@ void setupBotMagic(){
   Serial.println("setupBotMagic");
   
   EEPROM.begin(cfgLength);
-  Serial << F("read configData");
+  Serial << F("read configData:\n");
   readConfigFromEeprom(0);
   
   Serial << F("cfg.botToken:     ") << (cfg.botToken)      << F("\n");
@@ -292,25 +303,39 @@ void setupBotMagic(){
   Serial << F("cfg.detectModus:  ") << (cfg.detectModus)   << F("\n");
   Serial << F("cfg.detectType:   ") << (cfg.detectType)    << F("\n");
   Serial << F("cfg.offsetTenth:  ") << (cfg.offsetTenth)   << F("\n");
+  Serial << F("cfg.passwd:  ")      << (cfg.passwd)        << F("\n");
 
 
   WiFiManager wifiManager;
   wifiManager.setSaveConfigCallback(saveConfigCallback);
+  
   //Adding an additional config on the WIFI manager webpage for the bot token
   WiFiManagerParameter custom_bot_id("botid", "Bot Token", cfg.botToken, 50);
   wifiManager.addParameter(&custom_bot_id);
+  
+  //Adding an additional config on the WIFI manager webpage for the device passwd
+  WiFiManagerParameter custom_bot_pw("devpass", "Device Password", cfg.passwd, 20);
+  wifiManager.addParameter(&custom_bot_pw);
+
   //If it fails to connect it will create a TELEGRAM-BOT access point
   wifiManager.autoConnect(APname);
 
   Serial << F("custom_bot_id: ") << custom_bot_id.getValue() << F("\n");
 
+  // hash the passwd: https://github.com/tzikis/ArduinoMD5
+  // but is overkill as you only get to the passwd when you have physical access and then you own it anyway
   strcpy(cfg.botToken, custom_bot_id.getValue());
+ 
+
+  Serial << F("cfg.botToken: ") << cfg.botToken << F("\n");
+
+  strcpy(cfg.passwd, custom_bot_pw.getValue());
   if (shouldSaveConfig) {
     //writeBotTokenToEeprom(0);
     writeConfigToEeprom(0);
   }
 
-Serial << F("cfg.botToken: ") << cfg.botToken << F("\n");
+  Serial << F("cfg.passwd: ") << cfg.botToken << F("\n");
 
   bot = new UniversalTelegramBot(cfg.botToken, client);
   //bot->_debug=true;
@@ -349,8 +374,25 @@ void saveConfigCallback () {
 
 void readConfigFromEeprom(int offset){  
   EEPROM.get( offset, cfg );
+  // set to defaults if unconfigured
+  if (cfg.detectModus==-1){(cfg.detectModus=check_rising);}
+  if (cfg.detectType==-1){(cfg.detectType=check_humidity);}
+  if (cfg.offsetTenth==-1){
+    float t = tempOffset * 10;
+    (cfg.offsetTenth=(int) t);
+  }
+  int test = (int)cfg.botToken[0];
+  if (test==255){cfg.botToken[0]=0;}
+  test = (int)cfg.chatId_debug[0];
+  if (test==255){cfg.chatId_debug[0]=0;}
+  test = (int)cfg.chatId_alarm[0];
+  if (test==255){cfg.chatId_alarm[0]=0;}
+  test = (int)cfg.passwd[0];
+  if (test==255){cfg.passwd[0]=0;}
+
   check_rising = (cfg.detectModus==1);
   check_humidity = (cfg.detectType == 1);
+  
   float amount = (float) cfg.offsetTenth;
   amount = amount/10;
   if (amount > -6 && amount < 6){tempOffset = amount ;};
@@ -371,12 +413,30 @@ void writeConfigToEeprom(int offset){
   
 }
 
+void setDebugGroup(String chat_id){
+      int bufLen=15;
+      char charBuf[bufLen];
+      chat_id.toCharArray(charBuf,bufLen);
+      for (int i = 0; i<bufLen; i++ ){
+        cfg.chatId_debug[i]=charBuf[i]; }   
+      writeConfigToEeprom(0);
+}
+
+void setAlarmGroup(String chat_id){
+      int bufLen=15;
+      char charBuf[bufLen];
+      chat_id.toCharArray(charBuf,bufLen);
+      for (int i = 0; i<bufLen; i++ ){
+        cfg.chatId_alarm[i]=charBuf[i]; }
+      writeConfigToEeprom(0);
+}
+
+
 /********************************** bot chat  *****************************************/
 
 
 void handleNewMessages(int numNewMessages) {
-  Serial.println("handleNewMessages");
-  Serial.println(String(numNewMessages));
+  Serial << F("handleNewMessages (") << numNewMessages << F(")\n");
   for(int i=0; i<numNewMessages; i++) {
     String chat_id = String(bot->messages[i].chat_id);
     String text = bot->messages[i].text;
@@ -387,6 +447,18 @@ void handleNewMessages(int numNewMessages) {
     Serial << F("chat_title: ") << chat_title << F("\n");
     Serial << F("text: |") << text << F("|\n");
 
+    // check if chat_id is among the configured groupIds
+    bool isValidGroup = (chat_id == String(cfg.chatId_debug) || chat_id == String(cfg.chatId_alarm));
+    bool isValidCmd   = (isValidGroup || (text=="/hallo"||text=="/sagmenu1"||text=="/sagmenu2"||text.startsWith("/setzdebuggroup")||text.startsWith("/setzalarmgroup")));
+
+    if (!isValidCmd) {
+      String msg = "Hallo "+ from_name +"!\n\n";
+      msg += "Schön, von dir zu hören, aber es fühlt sich gerade nicht richtig an. \n";
+      msg += "(restricted access) \n";
+      bot->sendMessage(chat_id, msg, "Markdown");
+      return;
+    }
+    
     if (text.startsWith("/hallo")) {
       Serial << F("if: ") << text << F("\n\n");
       String msg = "Hallo "+ from_name +"!\n\n";
@@ -423,12 +495,77 @@ void handleNewMessages(int numNewMessages) {
       msg += "/setzOffset n.n : setze Offset \n";
       
       msg += "/setzDebug : debug-Msg senden?\n";
-      msg += "/setzDebugGroup : aktuelle Gruppe bekommt debug-Msg\n";
-      msg += "/setzAlarmGroup : aktuelle Gruppe bekommt Alarm-Msg\n";
-      msg += "/hallo     : sag Hallo\n";
+      msg += "/setzDebugGroup passwd: aktuelle Gruppe bekommt debug-Msg\n";
+      msg += "/setzAlarmGroup passwd: aktuelle Gruppe bekommt Alarm-Msg\n";
+      msg += "/hallo     : sag Hallo \u2764\ufe0f \n";
       msg += "/sagMenu1: Hauptmenü\n";
       bot->sendMessage(chat_id, msg, "Markdown");
     }
+   
+    else if (text.startsWith("/sagmenu3")) {
+      String msg = "Weitere Aufrufe für BibbiBot:\n\n";
+      msg += "/gibAlarm : tu, als sei ein Alarm-Event\n";
+      msg += "/gibDebug : tu, als sei ein Debug-Event\n";
+      msg += "/gib12c   : ruf 12cdetect auf Serial\n";
+      msg += "/setzBotDebugState : debug bot to Serial\n";
+      msg += "/checkPasswd n : check, ob das Passwort stimmtt \n";
+//      
+//      msg += "/setzDebug : debug-Msg senden?\n";
+//      msg += "/setzDebugGroup : aktuelle Gruppe bekommt debug-Msg\n";
+//      msg += "/setzAlarmGroup : aktuelle Gruppe bekommt Alarm-Msg\n";
+//      msg += "/hallo     : sag Hallo\n";
+//      msg += "/sagMenu1: Hauptmenü\n";
+      bot->sendMessage(chat_id, msg, "Markdown");
+    }
+
+    else if (text.startsWith("/gibalarm")) {
+      String msg = "gebe Alarm an "+String(cfg.chatId_alarm);
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
+
+      alarmLine("dummy-Alarm alarmLine");
+      doAlarm();
+   }
+
+    else if (text.startsWith("/gibdebug")) {
+      String msg = "gebe Debug an "+String(cfg.chatId_debug);
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
+      debug("dummy-debug",true);
+
+   }
+
+    else if (text.startsWith("/gibi2c")) {
+      String msg = "gebe i2cdetect() \n";
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
+
+      i2cdetect();
+
+   }
+
+    else if (text.startsWith("/checkpw")) {
+      String tmp = text.substring(9);
+      tmp.trim();
+      
+      String msg = "Eingabe: " + tmp +" \n";
+      msg += (String(cfg.passwd) == tmp)?" passt!\n":" passt nicht\n";
+      
+      bot->sendMessage(chat_id, msg, "Markdown");
+
+   }
+    // botDebugState
+    
+    else if (text.startsWith("/setzbotdebugstate")) {
+      //Serial << F("if: ") << text << F("\n\n");
+      botDebugState = !botDebugState;
+      bot->_debug=botDebugState;
+      String msg="botDebugState ist jetzt "+String(botDebugState);
+  
+      bot->sendMessage(chat_id, msg, "Markdown");
+
+    }   
+                    
         
     else if (text.startsWith("/saginfo")) {
       Serial << F("if: ") << text << F("\n\n");
@@ -495,34 +632,33 @@ void handleNewMessages(int numNewMessages) {
     }
     
     else if (text.startsWith("/setzdebuggroup")) {
-      Serial << F("if: ") << text << F("\n\n");
-      String msg="debugMsg gehen an die Gruppe "+chat_title+" mit der id: "+chat_id;
-      int bufLen=11;
-      char charBuf[bufLen];
-      chat_id.toCharArray(charBuf,bufLen);
-      for (int i = 0; i<bufLen; i++ ){
-        cfg.chatId_debug[i]=charBuf[i]; }   
-      writeConfigToEeprom(0);
-      bot->_debug=true;
-        bot->sendMessage(chat_id, msg, "Markdown");
-      bot->_debug=false;
-      
+      String msg;
+      String tmp = text.substring(16);
+      tmp.trim();
+      if (String(cfg.passwd) == tmp){
+        msg="debugMsg gehen an die Gruppe "+chat_title+" mit der id: "+chat_id;
+        bot->sendMessage(chat_id, msg, "Markdown");  
+        setDebugGroup(chat_id);
+      } else {
+        msg = "das Passwort war jetzt nicht ganz richtig";
+        bot->sendMessage(chat_id, msg, "Markdown");  
+      }
     }
     
     else if (text.startsWith("/setzalarmgroup")) {
-      Serial << F("if: ") << text << F("\n\n");
-      String msg="alarmMsg gehen an die Gruppe "+chat_title+" mit der id: "+chat_id;
-      int bufLen=11;
-      char charBuf[bufLen];
-      chat_id.toCharArray(charBuf,bufLen);
-      for (int i = 0; i<bufLen; i++ ){
-        cfg.chatId_alarm[i]=charBuf[i]; }
-      writeConfigToEeprom(0);
+      String msg;
+      String tmp = text.substring(16);
+      tmp.trim();
+      if (String(cfg.passwd) == tmp){
+        msg="alarmMsg gehen an die Gruppe "+chat_title+" mit der id: "+chat_id;
+        bot->sendMessage(chat_id, msg, "Markdown");  
+        setAlarmGroup(chat_id);
+      } else {
+        msg = "das Passwort war leider nicht ganz richtig";
+        bot->sendMessage(chat_id, msg, "Markdown");  
+      }
       
-      bot->sendMessage(chat_id, msg, "Markdown");
-      Serial << F("out: |") << chat_id << F("| ") << text << F("\n\n");
     }
-    
 
     
     else if (text.startsWith("/sagwerte")) {
@@ -736,7 +872,7 @@ void handleNewMessages(int numNewMessages) {
       
       String msg="cfg enthält: \n";
 
-        msg += "botToken: |"+String(cfg.botToken)+"|\n";
+        //msg += "botToken: |"+String(cfg.botToken)+"|\n";
         msg += "chatId_debug: |"+String(cfg.chatId_debug)+"|\n";
         msg += "chatId_alarm: |"+String(cfg.chatId_alarm)+"|\n";
         msg += "detectModus: |"+String(cfg.detectModus)+"|\n";
@@ -1105,6 +1241,21 @@ void showPressPage(){
 }
 
 
+void showUtfPage(String alertMsg){
+    
+  display.clearBuffer();         // clear the internal memory
+  display.setFont( u8g2_font_fub11_tf);  // choose a suitable font
+  alertMsg = "\u2764\ufe0f";
+  // TBD:
+  // pruefe Laenge der msg und teile ggf in 2 oder gar drei
+  
+  strBuffer.start() << alertMsg;
+  display.drawUTF8 (3, 32, strBuffer);  
+  
+ 
+  display.sendBuffer();
+}
+
 
 void showMsgPage(String alertMsg){
     
@@ -1115,7 +1266,7 @@ void showMsgPage(String alertMsg){
   // pruefe Laenge der msg und teile ggf in 2 oder gar drei
   
   strBuffer.start() << alertMsg;
-  display.drawStr (3, 32, strBuffer);  
+  display.drawUTF8 (3, 32, strBuffer);  
   
  
   display.sendBuffer();
@@ -1146,6 +1297,15 @@ void showLogoPage(void){
   display.drawXBM( 23, 11, 82, 42, logo_xbm);
   display.sendBuffer();
 }
+
+
+void showCnxPage(void){
+
+  display.clearBuffer();
+  display.drawXBM( 32, 2, 60, 60, cnx_xbm);
+  display.sendBuffer();
+}
+
 
 void showXBM1Page(void){
 
