@@ -77,22 +77,25 @@ _My_ project folder includes:
 Once the sketch loads and starts it checks if it has valid config data available (nope on first run) and then it switches to AP mode. Take your phone, scan wifi access points and join to the new bibbiGram AP. It will ask you to tap again to connect to the new network and once you do your browser will open with a start screen. 
 From a list of available networks select your own. Type in or paste the password.
 Below there is another input field for the telegram_bot token. 45 chars long, you may want to copy/paste it in.
-Click 'save' and the thing restarts and hopefully connects to the wifi network. 
+The last input is for an device password which is required when setting message recipient groups for the bot. It can take up to 20 chars.
+Click 'save' and wait for the 'dw' logo getting shown. The thing needs a restart now (power cycle) and hopefully connects to the wifi network. 
+
+### Security
+First of all, telegram as a platform is not very secure and the data this thing handles are not very private. Should a three-letter-agency desire to learn the temperature of your bathroom they will find a way. But there is a need to keep others from kidnapping access to the commands or send unwanted texts to it. 
+
+This thing sends messages to one of two telegram groups, '_ alarm' and '_ debug'. And membership in one of those groups limits who will be able to call a command on the bot as well. Most commands will be filtered if they do not come frome one of these groups, with the exception of commands opening a menu (/hallo, /sagmenu1, /sagmenu2) and the commands to establish the id of those 2 groups (/setzAlarmGroup, /setzDebugGroup). The latter two commands require that the device password is given.
 
 ### Initial Config
-Now we need to teach the device where to send alarm and status messages. 
+After the first config and reboot we need to teach the device where to send alarm and status messages. 
 
 Open your Telegram client and enter the botName_alarm - Group you created before, make sure you already invited the bot to this group. 
 
 - Type "/hallo" (w/o the quotes) and after some seconds the bot replies with links to 2 menus and an info introduction.
 - Type "/sagMenu2" and you will see a list of commands to see or change config and status values.
-- Type "/setzAlarmGroup" to teach the bot to direct alarm messages to this group.
-- Type "/setzOffset 1.4" to initialise the temperature calibration, you can fine tune that later but an initialisation after the first start is needed.
-- Type "/setzModus" to initialise the storage of the modus of operation. Now the bot checks for events of rising humidity. 
-- Type "/setzModus" again to switch back and the bot will check for events of falling temperature. 
+- Type "/setzAlarmGroup *devicePassword*" to teach the bot to direct alarm messages to this group.
 
 Change over to the botName_debug - Group you created before, again please check you already invited the bot to this group or do so now.
-- Type "/setzDebugGroup" to teach the bot to direct debug messages to this group. (Not much for now, you can toggle measurement reports with "/setDebug")
+- Type "/setzDebugGroup *devicePassword*" to teach the bot to direct debug messages to this group. (Not much for now, you can toggle measurement reports with "/setDebug")
 
 With all of the above parts put in place we have a thingee that can report to telegram groups but it also listens for messages and can react to them.
 
@@ -119,11 +122,11 @@ uptime in minutes, number of allarms it raised, name of the group it posts debug
 - /sagOffset reports the current temp. calibration. (no magic involved: tempMeasured-tempOffset=tempShown)
 - /setzOffset n.n (i.e.: /setOffset 1.4) allows to set the offset, decimal separator is a dot
 - /setDebug toggle the debug flag (which doesn't change much for the current version... TBD)
-- /zeigLuise, /zeigAnton, /zeigAbend shows some tiny pics on the display (pics have been replaced with dummies, you may want to rename or even delete those...)
+- /zeigLuise, /zeigAnton, /zeigAbend show some tiny pics on the display (pics have been replaced with dummies, you may want to rename or even delete those...)
 
 ### Calibration
 The ESP8266 doesnt take much energy but it still creates exhaust heat. The box has been updated to allow better airflow and more exposure to outside air for the sensor, but still... 
-A rough estimate says the tmeperature measurements will be off by about 1.5°C but it is recommended to actually measure it with another thermometer and adapt the offset accordingly. Then again, Even if the temp is a little off changes of temperature and humidity will be detected, and the box acts on changes.
+A rough estimate says the tmeperature measurements will be off by about 2.5°C but it is recommended to actually measure it with another thermometer and adapt the offset accordingly. Then again, even if the temp is a little off changes of temperature and humidity will be detected, and the box acts on changes.
 
 ### i8n
 TBD, currently, the interface is in German. 
