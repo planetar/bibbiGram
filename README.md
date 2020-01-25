@@ -1,6 +1,6 @@
 # bibbiGram
 
-Sketch to drive an ESP8266 with BME280 sensor and .96" I2C display and connect it to Telegram for control and report. 
+Sketch to drive an ESP8266 with BME280 sensor and .96" I2C display and connect it to Telegram for control and report. It has been developped using the Arduino IDE. 
 
 The basic idea is to connect an ESP8266 mcu with a sensor and enable it to not only measure the current temperature and humidity but to compare these to past measurements so that it can discover sudden drastic changes. Think of a bathroom with a forgotten open window in winter. Or a kettle with water boiling along in the kitchen.
 
