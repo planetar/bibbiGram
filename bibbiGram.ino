@@ -310,7 +310,7 @@ void setupBotMagic(){
   wifiManager.setSaveConfigCallback(saveConfigCallback);
   
   //Adding an additional config on the WIFI manager webpage for the bot token
-  WiFiManagerParameter custom_bot_id("botid", "Bot Token", cfg.botToken, 50);
+  WiFiManagerParameter custom_bot_id("botid", "Bot Token", cfg.botToken, 46); // 50
   wifiManager.addParameter(&custom_bot_id);
   
   //Adding an additional config on the WIFI manager webpage for the device passwd
@@ -330,12 +330,13 @@ void setupBotMagic(){
   Serial << F("cfg.botToken: ") << cfg.botToken << F("\n");
 
   strcpy(cfg.passwd, custom_bot_pw.getValue());
+  
   if (shouldSaveConfig) {
     //writeBotTokenToEeprom(0);
     writeConfigToEeprom(0);
   }
 
-  Serial << F("cfg.passwd: ") << cfg.botToken << F("\n");
+  Serial << F("cfg.passwd: ") << cfg.passwd << F("\n");
 
   bot = new UniversalTelegramBot(cfg.botToken, client);
   //bot->_debug=true;
