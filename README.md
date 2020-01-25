@@ -7,7 +7,7 @@ The basic idea is to connect an ESP8266 mcu with a sensor and enable it to not o
 In a smartHome setup it would suffice that the sensor box reports the measurements to some backend event bus and a smartHome controller (i.e. an openHab installation) has the rules to react on this event and notify the inhabitants or do the necessary.
 
 BibbiGram however aims to do this standalone by sending Telegram messages.
-It needs 5V from a wall plug, access to a Wlan and a Telegram-Bot token.
+It needs 5V from a wall plug, access to a Wlan and a Telegram-Bot token and 2 Telegram groups.
 
 ## Hardware:
 - Nodemcu v2 'Amica' ESP8266 the narrow type that fits nicely on a breadboard. Other types of ESP8266 will work as well but the case would need adaption.
@@ -34,7 +34,7 @@ The next building block is the telegram communications and I chose the Universal
 
 The forementioned library depend on the ArduinoJson library in version 5.x which may conflict with dependencies of other libraries (it did for me). The solution is to provide the libraries in the same folder and include them in quotes. To make this work I edited UniversalTelegramBot.h, line 26 to read #include "ArduinoJson.h" (instead of #include <ArduinoJson.h>)
 
-Average.h supplies an easy way to build and get long- and shorttime averages of the measurements and CharStream.h (together with Streaming lirary) allows much nicer formatting of complex output lines to Serial.
+Average.h supplies an easy way to build and get long- and shorttime averages of the measurements and CharStream.h (together with Streaming library) allows much nicer formatting of complex output lines to Serial.
 
 Besides, U8g2lib cares for the display and Adafruit_BME280 does the sensor. 
 ESP8266WiFi, WiFiClientSecure, EEPROM, DNSServer,ESP8266WebServer are requirements of WiFiManager or UniversalTelegramBot.
@@ -55,7 +55,7 @@ And then there is xbm_images.h which I introduced to separate private content (p
 - WiFiManager.h   https://github.com/tzapu/WiFiManager
 - WiFiManager.cpp https://github.com/tzapu/WiFiManager
 
-I want to thank all the authors for these libraries.
+I want to thank all the authors and contributers for these libraries.
 
 ### install/folder contents:
 Basically, download the files from here as .zip or by git clone. Then make all the required libraries available, either by using the Arduino library Manager or by having them present in the project folder. You may have to edit some of the include statements to fit your situation.
@@ -75,10 +75,13 @@ _My_ project folder includes:
 
 ## Usage:
 A recent update aims to supply better visual feeback of the state of the box at start and initial config. First thing after booting the display will show a logo (dw for datenwusel, a moniker I've been using for decades). It will change to a waves-pattern for the read/set wifi config - phase, cycling through measurements indicates normal function. Should the logo stay on the screen for long this may indicate that the box tried to restart and failed, it may need a powercycle to reboot.
+
 Once the sketch loads and starts it checks if it has valid config data available (nope on first run) and then it switches to AP mode. Take your phone, scan wifi access points and join to the new bibbiGram AP. It will ask you to tap again to connect to the new network and once you do your browser will open with a start screen. 
+
 From a list of available networks select your own. Type in or paste the password.
 Below there is another input field for the telegram_bot token. 46 chars long, you may want to copy/paste it in.
 The last input is for an device password which is required when setting message recipient groups for the bot. It can take up to 20 chars.
+
 Click 'save' and wait for the 'dw' logo getting shown. The thing needs a restart now (power cycle) and hopefully connects to the wifi network. 
 
 ### Security
