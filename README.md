@@ -74,9 +74,10 @@ _My_ project folder includes:
 - xbm_images.h  
 
 ## Usage:
+A recent update aims to supply better visual feeback of the state of the box at start and initial config. First thing after booting the display will show a logo (dw for datenwusel, a moniker I've been using for decades). It will change to a waves-pattern for the read/set wifi config - phase, cycling through measurements indicates normal function. Should the logo stay on the screen for long this may indicate that the box tried to restart and failed, it may need a powercycle to reboot.
 Once the sketch loads and starts it checks if it has valid config data available (nope on first run) and then it switches to AP mode. Take your phone, scan wifi access points and join to the new bibbiGram AP. It will ask you to tap again to connect to the new network and once you do your browser will open with a start screen. 
 From a list of available networks select your own. Type in or paste the password.
-Below there is another input field for the telegram_bot token. 45 chars long, you may want to copy/paste it in.
+Below there is another input field for the telegram_bot token. 46 chars long, you may want to copy/paste it in.
 The last input is for an device password which is required when setting message recipient groups for the bot. It can take up to 20 chars.
 Click 'save' and wait for the 'dw' logo getting shown. The thing needs a restart now (power cycle) and hopefully connects to the wifi network. 
 
@@ -126,7 +127,9 @@ uptime in minutes, number of allarms it raised, name of the group it posts debug
 
 ### Calibration
 The ESP8266 doesnt take much energy but it still creates exhaust heat. The box has been updated to allow better airflow and more exposure to outside air for the sensor, but still... 
-A rough estimate says the tmeperature measurements will be off by about 2.5°C but it is recommended to actually measure it with another thermometer and adapt the offset accordingly. Then again, even if the temp is a little off changes of temperature and humidity will be detected, and the box acts on changes.
+A rough estimate says the tmeperature measurements will be off by about 2.5°C but it is recommended to actually measure it with another thermometer and adapt the offset accordingly. Then again, even if the temp is a little off *changes of temperature and humidity* will be detected, and the box acts on changes.
+
+As a side note: it is recommended to place the box where changes of air can be felt. Blobs of old air may survive surprisingly long in a corner even when lots of fresh air stream into the middle...
 
 ### i8n
 TBD, currently, the interface is in German. 
