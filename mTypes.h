@@ -5,6 +5,7 @@
 // Types 'byte' und 'word' don't work!
 typedef struct {
   char botToken[46];                // Token of Telegram bot
+  char nada[1];                     // kludge to isolate botToken from chatId_debug
   char chatId_debug[15];            // telegram group for debug messages
   char chatId_alarm[15];            // telegram group for alarm messages
   int  detectModus;             // "0"=falling , "1"=rising 

@@ -37,7 +37,7 @@
 
 
 
-const char* version = "0.07.2";
+const char* version = "0.07.3";
 const char* APname  = "bibbiGram_bot";
 const char* SENSORNAME = APname;
 
@@ -190,6 +190,8 @@ void setup() {
   // read or at first start, allow config of SSID, passwd, token
   setupBotMagic();
 
+  setupAverageing();
+      
   showLogoPage();  
   delay(100); 
   
@@ -227,15 +229,14 @@ void timed_loop() {
   if(millis() > time_1 + INTERVAL_1){
     time_1 = millis();
     
-      //checkDebug();  
-      checkBotNewMessages();
+    checkBotNewMessages();
   }
    
   if(millis() > time_2 + INTERVAL_2){
     time_2 = millis();
 
-        measureBme(); 
-        checkMeasurement();    
+    measureBme(); 
+    checkMeasurement();    
     loopDisplayStep();  
   }
  
@@ -257,8 +258,6 @@ void timed_loop() {
 
   if(millis() > time_4 + INTERVAL_4){
     time_4 = millis();
-      
-         //sendState();
       
   }
   
@@ -320,27 +319,29 @@ void setupBotMagic(){
   //If it fails to connect it will create a TELEGRAM-BOT access point
   wifiManager.autoConnect(APname);
 
-  Serial << F("custom_bot_id: ") << custom_bot_id.getValue() << F("\n");
+  // inserting cfg.nada helps to workaround the issue 
+  //Serial << F("cfg.chatId_debug: ") << cfg.chatId_debug << F("\n");      // the value is still intact here  
+  //Serial << F("custom_bot_id: ") << custom_bot_id.getValue() << F("\n"); // comes out as expected
+  strcpy(cfg.botToken, custom_bot_id.getValue());                        // this call destroys the neighbouring field
+  //Serial << F("cfg.botToken: ") << cfg.botToken << F("\n");            // comes out as expected
+  Serial << F("cfg.chatId_debug: ") << cfg.chatId_debug << F("\n");      // the value is empty here unless cfg.nada isolates the fields
+
 
   // hash the passwd: https://github.com/tzikis/ArduinoMD5
   // but is overkill as you only get to the passwd when you have physical access and then you own it anyway
-  strcpy(cfg.botToken, custom_bot_id.getValue());
- 
-
-  Serial << F("cfg.botToken: ") << cfg.botToken << F("\n");
-
   strcpy(cfg.passwd, custom_bot_pw.getValue());
   
   if (shouldSaveConfig) {
-    //writeBotTokenToEeprom(0);
     writeConfigToEeprom(0);
   }
+  
+  //Serial << F("cfg.chatId_debug: ") << cfg.chatId_debug << F("\n");
 
   Serial << F("cfg.passwd: ") << cfg.passwd << F("\n");
 
   bot = new UniversalTelegramBot(cfg.botToken, client);
   //bot->_debug=true;
-  Serial.println("");
+  Serial.println("------------------------------------");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   IPAddress ip = WiFi.localIP();
@@ -358,20 +359,6 @@ void saveConfigCallback () {
   shouldSaveConfig = true;
 }
 
-//void readBotTokenFromEeprom(int offset){
-//  for(int i = offset; i<BOT_TOKEN_LENGTH; i++ ){
-//    botToken[i] = EEPROM.read(i);
-//  }
-//  EEPROM.commit();
-//}
-//
-//void writeBotTokenToEeprom(int offset){
-//  for(int i = offset; i<BOT_TOKEN_LENGTH; i++ ){
-//    EEPROM.write(i, botToken[i]);
-//  }
-//  EEPROM.commit();
-//}
-
 
 void readConfigFromEeprom(int offset){  
   EEPROM.get( offset, cfg );
@@ -382,14 +369,21 @@ void readConfigFromEeprom(int offset){
     float t = tempOffset * 10;
     (cfg.offsetTenth=(int) t);
   }
-  int test = (int)cfg.botToken[0];
-  if (test==255){cfg.botToken[0]=0;}
-  test = (int)cfg.chatId_debug[0];
-  if (test==255){cfg.chatId_debug[0]=0;}
-  test = (int)cfg.chatId_alarm[0];
-  if (test==255){cfg.chatId_alarm[0]=0;}
-  test = (int)cfg.passwd[0];
-  if (test==255){cfg.passwd[0]=0;}
+  // after format (erase all flash) every byte is 255. We want to empty then
+  // but it is possible that the first byte is 255 simply cause this is the configured value
+  // it should stay untouched then. So instead of one-by-one let's check them all together
+  int test0 = (int)cfg.botToken[0];
+  int test1 = (int)cfg.chatId_debug[0];
+  int test2 = (int)cfg.chatId_alarm[0];
+  int test3 = (int)cfg.passwd[0];
+
+  if (test0==255 && test1==255 && test2==255 && test3==255){
+    cfg.botToken[0]=0;
+    cfg.nada[0]=0;
+    cfg.chatId_debug[0]=0;
+    cfg.chatId_alarm[0]=0;
+    cfg.passwd[0]=0;
+  }
 
   check_rising = (cfg.detectModus==1);
   check_humidity = (cfg.detectType == 1);
@@ -401,6 +395,9 @@ void readConfigFromEeprom(int offset){
 }
 
 void writeConfigToEeprom(int offset){
+  
+  Serial << F("writeConfigToEeprom ") << offset << F("\n");
+  
   // update possibly changed values
   cfg.detectModus = check_rising ? 1 : 0;
   cfg.detectType = check_humidity ? 1 : 0;
@@ -450,7 +447,7 @@ void handleNewMessages(int numNewMessages) {
 
     // check if chat_id is among the configured groupIds
     bool isValidGroup = (chat_id == String(cfg.chatId_debug) || chat_id == String(cfg.chatId_alarm));
-    bool isValidCmd   = (isValidGroup || (text=="/hallo"||text=="/sagmenu1"||text=="/sagmenu2"||text.startsWith("/setzdebuggroup")||text.startsWith("/setzalarmgroup")));
+    bool isValidCmd   = (isValidGroup || (text=="/hallo"||text=="/sagmenu1"||text=="/sagmenu2"||text=="/sagmenu3"||text.startsWith("/setzdebuggroup")||text.startsWith("/setzalarmgroup")));
 
     if (!isValidCmd) {
       String msg = "Hallo "+ from_name +"!\n\n";
@@ -502,20 +499,18 @@ void handleNewMessages(int numNewMessages) {
       msg += "/sagMenu1: Hauptmenü\n";
       bot->sendMessage(chat_id, msg, "Markdown");
     }
-   
+
+    // this is 'undocumented' and the commands are only useful for debug
+    // and while a Serial monitor is open 
     else if (text.startsWith("/sagmenu3")) {
       String msg = "Weitere Aufrufe für BibbiBot:\n\n";
       msg += "/gibAlarm : tu, als sei ein Alarm-Event\n";
       msg += "/gibDebug : tu, als sei ein Debug-Event\n";
       msg += "/gib12c   : ruf 12cdetect auf Serial\n";
       msg += "/setzBotDebugState : debug bot to Serial\n";
-      msg += "/checkPasswd n : check, ob das Passwort stimmtt \n";
+      msg += "/checkPasswd n : check, ob das Passwort stimmt \n";
 //      
-//      msg += "/setzDebug : debug-Msg senden?\n";
-//      msg += "/setzDebugGroup : aktuelle Gruppe bekommt debug-Msg\n";
-//      msg += "/setzAlarmGroup : aktuelle Gruppe bekommt Alarm-Msg\n";
-//      msg += "/hallo     : sag Hallo\n";
-//      msg += "/sagMenu1: Hauptmenü\n";
+
       bot->sendMessage(chat_id, msg, "Markdown");
     }
 
@@ -1016,6 +1011,19 @@ void checkMeasurement(){
   aveShortList.push(newVal);
   avgShort=aveShortList.mean();
 
+  // test if avgLong and avgShort are valid
+  if (isnan(avgLong) || isnan(avgShort)){
+    debug("average fail: clear lists",true);
+    setupAverageing();
+    // try it again
+    aveLongList.push(newVal);
+    avgLong = aveLongList.mean();
+    
+    aveShortList.push(newVal);
+    avgShort=aveShortList.mean();   
+  }
+
+
   cntMeasures++;
   
   // if there were any limiting factors, this wd be the place to check them
@@ -1071,6 +1079,14 @@ void checkMeasurement(){
 void switchModus(){
       check_humidity = !check_humidity;
       check_rising = !check_rising;
+
+      setupAverageing();
+      
+      writeConfigToEeprom(0);
+  
+}
+
+void setupAverageing(){
       aveLongList.clear();
       aveShortList.clear();
 
@@ -1078,12 +1094,7 @@ void switchModus(){
       avgShort    = 0;
       cntMeasures = 0;
       alarmCount=0;  
-      
-      writeConfigToEeprom(0);
-  
 }
-
-
 
 
 
@@ -1243,12 +1254,11 @@ void showPressPage(){
 
 
 void showUtfPage(String alertMsg){
-    
+  // does not work yet 
   display.clearBuffer();         // clear the internal memory
   display.setFont( u8g2_font_fub11_tf);  // choose a suitable font
   alertMsg = "\u2764\ufe0f";
-  // TBD:
-  // pruefe Laenge der msg und teile ggf in 2 oder gar drei
+
   
   strBuffer.start() << alertMsg;
   display.drawUTF8 (3, 32, strBuffer);  
