@@ -2,7 +2,7 @@
 a list of desiderata
 
 ## Telegram is a moving target (?!)
-- ~~looks like the format and length of group - chatid s in telegram have changed on 2020/01/18. What used to look like -387654321 is now like -1001234567890. 4 more chars to save and restore to/from 'Eeprom'. 
+- ~~looks like the format and length of group - chatid s in telegram have changed on 2020/01/18. What used to look like -387654321 is now like -1001234567890. 4 more chars to save and restore to/from 'Eeprom'.~~
 Advancing an account to admin changes the type of group of  the telegram group. It get's a different id then. 
 
 ## UI and feedback at the very first start
