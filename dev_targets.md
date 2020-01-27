@@ -6,7 +6,7 @@ a list of desiderata
 Advancing an account to admin changes the type of group of  the telegram group. It get's a different id then. 
 
 ## UI and feedback at the very first start
-- ~~when setting up a _bot in a new environment (new wifi) it is somewhat irritating that there is no initial visual helloWorld on the display. Me myself thought the thing was broken... ~~
+- ~~when setting up a _bot in a new environment (new wifi) it is somewhat irritating that there is no initial visual helloWorld on the display. Me myself thought the thing was broken.~~
 fixed with 0.07.2
 - ~~a related issue: after entering the wifi config data and botToken and Save the thing needs a reboot. But it doesnt say so. It really should.~~
 the readme.md says it now
